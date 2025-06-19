@@ -2,22 +2,13 @@ import pandas as pd
 import joblib
 import re
 
-# Chargement initial
+# Chargement du modèle et du vectorizer
 vectorizer = joblib.load("vectorizer.joblib")
 model = joblib.load("model.joblib")
 
-# Découpe en phrases
+# Fonction pour découper le texte en phrases
 def decoupe_en_phrases(texte):
     return [p for p in re.split(r'[.!?]\s*', texte.strip()) if p]
-
-# Correction orthographique optionnelle (recommandée)
-from spellchecker import SpellChecker
-spell = SpellChecker(language='fr')
-
-def corriger_texte(phrase):
-    mots = phrase.split()
-    corriges = [spell.correction(mot) or mot for mot in mots]
-    return ' '.join(corriges)
 
 # Boucle interactive
 while True:
@@ -31,16 +22,21 @@ while True:
         continue
 
     ia_detectees = 0
-    historique = []
+    nouvelles_donnees = []
 
     for phrase in phrases:
-        phrase_corrigee = corriger_texte(phrase)
-        vect = vectorizer.transform([phrase_corrigee])
+        phrase = phrase.strip()
+        if not phrase:
+            continue
+
+        vect = vectorizer.transform([phrase])
         pred = model.predict(vect)[0]
+
         print(f"\nPhrase : {phrase}")
         print(f"Prédiction : {'IA' if pred == 1 else 'Humain'}")
 
         feedback = input("Est-ce correct ? (y/n) : ").lower().strip()
+
         label_final = pred
         if feedback == "n":
             vrai_label = input("Bon label ? (1=IA, 0=Humain) : ").strip()
@@ -48,15 +44,28 @@ while True:
                 label_final = int(vrai_label)
             else:
                 print("Label invalide, résultat initial conservé.")
+        elif feedback not in ["y", ""]:
+            print("Réponse invalide. La phrase ne sera pas enregistrée.")
+            continue
+
         if label_final == 1:
             ia_detectees += 1
 
-        # Sauvegarde automatique
-        historique.append({"phrase": phrase_corrigee, "label": label_final})
+        nouvelles_donnees.append({"texte": phrase, "label": label_final})
 
-    # Écriture auto. dans historique.csv
-    df_historique = pd.DataFrame(historique)
-    df_historique.to_csv("historique.csv", mode='a', index=False, header=False)
+    if nouvelles_donnees:
+        df = pd.DataFrame(nouvelles_donnees)
+        df.to_csv(
+            "data.csv",
+            mode='a',
+            index=False,
+            header=False,
+            quoting=1,         # csv.QUOTE_ALL
+            quotechar='"',
+            lineterminator='\n'
+        )
 
-    pourcentage = (ia_detectees / len(phrases)) * 100
-    print(f"\nCe texte contient environ {pourcentage:.2f}% de contenu IA détecté.")
+        pourcentage = (ia_detectees / len(nouvelles_donnees)) * 100
+        print(f"\nCe texte contient environ {pourcentage:.2f}% de contenu IA détecté.")
+    else:
+        print("Aucune phrase enregistrée.")
